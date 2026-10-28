@@ -179,6 +179,8 @@ func startTestBot(t *testing.T, api *fakeTelegram) {
 	writeVaultFile(t, dir, "Прочее/Картинки/Медведев Владислав Сергеевич.png", "fake-image-bytes")
 	writeVaultFile(t, dir, "Предметы/МДК.11.01 Базы данных.md",
 		"### Кто ведет: [[Медведев Владислав Сергеевич]]\n### Аттестация\nЗачёт\n")
+	writeVaultFile(t, dir, "Предметы/МДК.01.02 Поддержка и тестирование.md",
+		"### Кто ведет: [[Медведев Владислав Сергеевич]]\n### Аттестация\nЗачёт\n")
 	writeVaultFile(t, dir, "Аттестация.md",
 		"| Зачёт | Работа |\n| --- | --- |\n| [[ОП.05]] | текст |\n\n[сайт](https://example.com/page)\n")
 
@@ -418,6 +420,19 @@ func TestEndToEndSubjectUsesRichMessage(t *testing.T) {
 	}
 	if !strings.HasPrefix(buttons[0].CallbackData, "t:") {
 		t.Errorf("callback data = %q, want t: prefix", buttons[0].CallbackData)
+	}
+}
+
+func TestEndToEndSubjectUniqueSubstring(t *testing.T) {
+	api := &fakeTelegram{incoming: "/subject мдк.01"}
+	startTestBot(t, api)
+
+	markdown := waitForRich(t, api)
+	if !strings.Contains(markdown, "# МДК.01.02 Поддержка и тестирование") {
+		t.Errorf("unique substring did not select the note:\n%s", markdown)
+	}
+	if strings.Contains(markdown, "МДК.11.01") {
+		t.Errorf("a similar subject leaked into the card:\n%s", markdown)
 	}
 }
 

@@ -87,6 +87,12 @@ func (a *App) handleTeacher(ctx context.Context, chatID int64, args string) {
 
 // resolveTeacher finds a teacher and reports ambiguity or a miss to the chat.
 func (a *App) resolveTeacher(ctx context.Context, chatID int64, idx *vault.Index, name string) (*vault.Teacher, bool) {
+	// A literal substring unique to one teacher is stronger than fuzzy ranking:
+	// "/teacher Медведев В" must pick that note even if others look similar.
+	if teacher := search.UniqueTeacherBySubstring(idx, name); teacher != nil {
+		return teacher, true
+	}
+
 	matches := search.Teachers(idx, name)
 	if len(matches) == 0 || matches[0].Score < 0.55 {
 		a.replyTeacherNotFound(ctx, chatID, name, matches)
@@ -165,6 +171,13 @@ func (a *App) handleSubject(ctx context.Context, chatID int64, args string) {
 			return
 		}
 		a.reply(ctx, chatID, subjectsList(idx.Subjects))
+		return
+	}
+
+	// "/subject мдк.01" contains ".01" in exactly one title, so pick it
+	// instead of listing every subject that starts with "МДК".
+	if subject := search.UniqueSubjectBySubstring(idx, name); subject != nil {
+		a.sendSubjectNote(ctx, chatID, subject)
 		return
 	}
 

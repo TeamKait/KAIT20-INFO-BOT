@@ -106,6 +106,29 @@ func TestDocuments(t *testing.T) {
 	}
 }
 
+func TestUniqueBySubstring(t *testing.T) {
+	idx := testIndex()
+
+	subject := UniqueSubjectBySubstring(idx, "мдк.01")
+	if subject == nil || subject.Name != "МДК.01.02 Поддержка и тестирование программных модулей" {
+		t.Errorf("UniqueSubjectBySubstring(мдк.01) = %v", subject)
+	}
+	if got := UniqueSubjectBySubstring(idx, "мдк"); got != nil {
+		t.Errorf("several subjects contain 'мдк', got %q", got.Name)
+	}
+	if got := UniqueSubjectBySubstring(idx, "экономика"); got == nil {
+		t.Error("expected the economy subject")
+	}
+	if got := UniqueSubjectBySubstring(idx, "нет такого"); got != nil {
+		t.Errorf("unexpected match: %q", got.Name)
+	}
+
+	teacher := UniqueTeacherBySubstring(idx, "шихрагим")
+	if teacher == nil || teacher.Name != "Шихрагимов Шихрагим Темирланович" {
+		t.Errorf("UniqueTeacherBySubstring(шихрагим) = %v", teacher)
+	}
+}
+
 func TestNormalize(t *testing.T) {
 	cases := map[string]string{
 		"МДК.01.02":     "мдк 1 2",
