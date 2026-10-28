@@ -121,7 +121,7 @@ func teachersList(teachers []*vault.Teacher) string {
 	for _, teacher := range teachers {
 		b.WriteString("• " + esc(teacher.Name) + "\n")
 	}
-	b.WriteString("\nПодробнее: <code>/teacher Фамилия</code> или <code>/teacher Фамилия email</code>")
+	b.WriteString("\nПодробнее: <code>/teacher &lt;имя&gt;</code> или <code>/email &lt;имя&gt;</code>")
 	return b.String()
 }
 
@@ -132,6 +132,6 @@ func subjectsList(subjects []*vault.Subject) string {
 	for _, subject := range subjects {
 		b.WriteString("• " + esc(subject.Name) + "\n")
 	}
-	b.WriteString("\nПодробнее: <code>/subject Предмет</code>")
+	b.WriteString("\nПодробнее: <code>/subject &lt;название&gt;</code>")
 	return b.String()
 }

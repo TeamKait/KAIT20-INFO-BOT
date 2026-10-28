@@ -311,12 +311,41 @@ func TestEndToEndTeacherLookup(t *testing.T) {
 	}
 }
 
+func TestEndToEndEmail(t *testing.T) {
+	api := &fakeTelegram{incoming: "/email Медведев"}
+	startTestBot(t, api)
+
+	reply := waitForReply(t, api)
+	for _, want := range []string{"vmedvedev@kait20.ru", "Не подтверждена"} {
+		if !strings.Contains(reply, want) {
+			t.Errorf("reply does not contain %q:\n%s", want, reply)
+		}
+	}
+}
+
+func TestEndToEndStartUsesPlaceholders(t *testing.T) {
+	api := &fakeTelegram{incoming: "/start"}
+	startTestBot(t, api)
+
+	reply := waitForReply(t, api)
+	for _, want := range []string{
+		"/teacher &lt;имя&gt;",
+		"/email &lt;имя&gt;",
+		"/subject &lt;название&gt;",
+		"/find &lt;запрос&gt;",
+	} {
+		if !strings.Contains(reply, want) {
+			t.Errorf("start text does not contain %q:\n%s", want, reply)
+		}
+	}
+}
+
 func TestEndToEndTeacherList(t *testing.T) {
 	api := &fakeTelegram{incoming: "/teacher"}
 	startTestBot(t, api)
 
 	reply := waitForReply(t, api)
-	for _, want := range []string{"Преподаватели", "Медведев Владислав Сергеевич", "/teacher Фамилия"} {
+	for _, want := range []string{"Преподаватели", "Медведев Владислав Сергеевич", "/email &lt;имя&gt;"} {
 		if !strings.Contains(reply, want) {
 			t.Errorf("reply does not contain %q:\n%s", want, reply)
 		}
@@ -331,7 +360,7 @@ func TestEndToEndSubjectList(t *testing.T) {
 	startTestBot(t, api)
 
 	reply := waitForReply(t, api)
-	for _, want := range []string{"Предметы", "МДК.11.01 Базы данных", "/subject Предмет"} {
+	for _, want := range []string{"Предметы", "МДК.11.01 Базы данных", "/subject &lt;название&gt;"} {
 		if !strings.Contains(reply, want) {
 			t.Errorf("reply does not contain %q:\n%s", want, reply)
 		}

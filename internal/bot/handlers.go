@@ -7,18 +7,17 @@ import (
 	"time"
 
 	"infobot/internal/search"
+	"infobot/internal/vault"
 )
 
 var teacherFieldAliases = map[string]string{
-	"email":    "email",
-	"почта":    "email",
-	"mail":     "email",
 	"subjects": "subjects",
 	"предметы": "subjects",
 }
 
-// splitTeacherField separates the optional field from the name:
-// "/teacher Медведев email" -> ("Медведев", "email").
+// splitTeacherField separates the optional "subjects" field from the name:
+// "/teacher Медведев предметы" -> ("Медведев", "subjects"). Email is a
+// separate command now: /email <name>.
 func splitTeacherField(args string) (name, field string) {
 	fields := strings.Fields(args)
 	if len(fields) == 0 {
@@ -36,12 +35,12 @@ func splitTeacherField(args string) (name, field string) {
 func (a *App) handleStart(ctx context.Context, chatID int64) {
 	text := "<b>Справочник по хранилищу Sharaga</b>\n\n" +
 		"/teacher — список преподавателей\n" +
-		"/teacher Иванов — заметка преподавателя: фото, почта, предметы\n" +
-		"/teacher Иванов email — только почта\n" +
-		"/teacher Иванов предметы — что ведёт\n" +
+		"/teacher &lt;имя&gt; — заметка преподавателя\n" +
+		"/teacher &lt;имя&gt; предметы — что ведёт\n\n" +
+		"/email &lt;имя&gt; — почта преподавателя\n\n" +
 		"/subject — список предметов\n" +
-		"/subject МДК.11.01 — информация о предмете\n" +
-		"/find аттестация — найти заметку целиком\n" +
+		"/subject &lt;название&gt; — информация о предмете\n\n" +
+		"/find &lt;запрос&gt; — найти заметку целиком\n\n" +
 		"/sync — обновить данные из GitHub\n\n" +
 		"Понимаю неполные имена и небольшие опечатки. Данные обновляются раз в час."
 
@@ -73,10 +72,25 @@ func (a *App) handleTeacher(ctx context.Context, chatID int64, args string) {
 		return
 	}
 
+	teacher, ok := a.resolveTeacher(ctx, chatID, idx, name)
+	if !ok {
+		return
+	}
+
+	switch field {
+	case "subjects":
+		a.reply(ctx, chatID, a.teacherSubjectsText(teacher))
+	default:
+		a.sendTeacherNote(ctx, chatID, teacher)
+	}
+}
+
+// resolveTeacher finds a teacher and reports ambiguity or a miss to the chat.
+func (a *App) resolveTeacher(ctx context.Context, chatID int64, idx *vault.Index, name string) (*vault.Teacher, bool) {
 	matches := search.Teachers(idx, name)
 	if len(matches) == 0 || matches[0].Score < 0.55 {
 		a.replyTeacherNotFound(ctx, chatID, name, matches)
-		return
+		return nil, false
 	}
 
 	best := matches[0]
@@ -90,17 +104,31 @@ func (a *App) handleTeacher(ctx context.Context, chatID int64, args string) {
 			fmt.Fprintf(&b, "%d. %s\n", i+1, esc(match.Teacher.Name))
 		}
 		a.reply(ctx, chatID, strings.TrimSpace(b.String()))
+		return nil, false
+	}
+
+	return best.Teacher, true
+}
+
+func (a *App) handleEmail(ctx context.Context, chatID int64, args string) {
+	name := strings.TrimSpace(args)
+	if name == "" {
+		a.reply(ctx, chatID, "Укажите имя: <code>/email Иванов</code>")
 		return
 	}
 
-	switch field {
-	case "email":
-		a.reply(ctx, chatID, a.teacherEmailText(best.Teacher))
-	case "subjects":
-		a.reply(ctx, chatID, a.teacherSubjectsText(best.Teacher))
-	default:
-		a.sendTeacherNote(ctx, chatID, best.Teacher)
+	idx := a.vault.Index()
+	if idx == nil {
+		a.reply(ctx, chatID, "Данные ещё не загружены, попробуйте через минуту.")
+		return
 	}
+
+	teacher, ok := a.resolveTeacher(ctx, chatID, idx, name)
+	if !ok {
+		return
+	}
+
+	a.reply(ctx, chatID, a.teacherEmailText(teacher))
 }
 
 func (a *App) replyTeacherNotFound(ctx context.Context, chatID int64, name string, matches []search.TeacherMatch) {

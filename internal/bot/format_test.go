@@ -60,7 +60,7 @@ func TestTeachersList(t *testing.T) {
 		{Name: "Медведев Владислав Сергеевич"},
 	})
 
-	for _, want := range []string{"Преподаватели", "— 2", "Волкова", "Медведев", "/teacher Фамилия"} {
+	for _, want := range []string{"Преподаватели", "— 2", "Волкова", "Медведев", "/email &lt;имя&gt;"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("list does not contain %q:\n%s", want, text)
 		}
@@ -73,7 +73,7 @@ func TestSubjectsList(t *testing.T) {
 		{Name: "УП.14 Учебная практика"},
 	})
 
-	for _, want := range []string{"Предметы", "— 2", "МДК.11.01", "УП.14", "/subject Предмет"} {
+	for _, want := range []string{"Предметы", "— 2", "МДК.11.01", "УП.14", "/subject &lt;название&gt;"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("list does not contain %q:\n%s", want, text)
 		}

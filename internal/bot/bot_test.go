@@ -104,9 +104,10 @@ func TestSplitTeacherField(t *testing.T) {
 		name  string
 		field string
 	}{
-		{"Медведев email", "Медведев", "email"},
-		{"Медведев Владислав email", "Медведев Владислав", "email"},
 		{"Медведев предметы", "Медведев", "subjects"},
+		// "email" is no longer a /teacher field: it is part of the name and
+		// the lookup simply misses. The email lives in /email <name>.
+		{"Медведев email", "Медведев email", ""},
 		{"Медведев", "Медведев", ""},
 		{"Медведев Владислав", "Медведев Владислав", ""},
 		{"", "", ""},

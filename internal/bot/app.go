@@ -69,9 +69,10 @@ func New(ctx context.Context, cfg *config.Config, svc *vault.Service, log *slog.
 	if _, err := tg.SetMyCommands(ctx, &tgbot.SetMyCommandsParams{
 		Commands: []models.BotCommand{
 			{Command: "start", Description: "Справка и примеры"},
-			{Command: "teacher", Description: "Преподаватель: /teacher Иванов email"},
-			{Command: "subject", Description: "Информация о предмете"},
-			{Command: "find", Description: "Найти заметку целиком"},
+			{Command: "teacher", Description: "Заметка преподавателя: /teacher <имя>"},
+			{Command: "email", Description: "Почта преподавателя: /email <имя>"},
+			{Command: "subject", Description: "Предмет: /subject <название>"},
+			{Command: "find", Description: "Найти заметку: /find <запрос>"},
 			{Command: "sync", Description: "Обновить данные из GitHub"},
 		},
 	}); err != nil {
@@ -117,6 +118,8 @@ func (a *App) dispatch(ctx context.Context, _ *tgbot.Bot, update *models.Update)
 		a.handleStart(ctx, msg.Chat.ID)
 	case "teacher":
 		a.handleTeacher(ctx, msg.Chat.ID, args)
+	case "email":
+		a.handleEmail(ctx, msg.Chat.ID, args)
 	case "subject":
 		a.handleSubject(ctx, msg.Chat.ID, args)
 	case "find":
