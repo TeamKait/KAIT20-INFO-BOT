@@ -22,10 +22,11 @@ const (
 
 var mdImageTarget = regexp.MustCompile(`!\[\[([^\]\|#]+)(?:#[^\]\|]*)?(?:\|[^\]]*)?\]\]`)
 
-func (a *App) sendRich(ctx context.Context, chatID int64, message models.InputRichMessage) error {
+func (a *App) sendRich(ctx context.Context, chatID int64, message models.InputRichMessage, markup models.ReplyMarkup) error {
 	_, err := a.tg.SendRichMessage(ctx, &tgbot.SendRichMessageParams{
 		ChatID:      chatID,
 		RichMessage: message,
+		ReplyMarkup: markup,
 	})
 	return err
 }
@@ -101,7 +102,7 @@ func (a *App) sendTeacherNote(ctx context.Context, chatID int64, teacher *vault.
 		markdown = "(пустая заметка)"
 	}
 
-	if err := a.sendRich(ctx, chatID, models.InputRichMessage{Markdown: markdown, Media: media}); err != nil {
+	if err := a.sendRich(ctx, chatID, models.InputRichMessage{Markdown: markdown, Media: media}, a.teacherButtons(teacher)); err != nil {
 		a.log.Warn("send rich teacher", "chat_id", chatID, "err", err)
 		a.reply(ctx, chatID, a.teacherCard(teacher))
 	}

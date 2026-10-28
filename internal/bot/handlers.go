@@ -170,12 +170,7 @@ func (a *App) handleSubject(ctx context.Context, chatID int64, args string) {
 		return
 	}
 
-	a.sendNoteTitled(ctx, chatID, best.Subject.Name, search.DocMatch{
-		Title: best.Subject.Name,
-		Kind:  "Предмет",
-		Path:  best.Subject.Path,
-		Body:  best.Subject.Body,
-	})
+	a.sendSubjectNote(ctx, chatID, best.Subject)
 }
 
 func (a *App) handleFind(ctx context.Context, chatID int64, args string) {

@@ -40,12 +40,12 @@ func (a *App) reply(ctx context.Context, chatID int64, text string) {
 // Only Obsidian-specific syntax is adapted; the author's headings, tables,
 // lists, quotes and links are kept as written.
 func (a *App) sendNote(ctx context.Context, chatID int64, doc search.DocMatch) {
-	a.sendNoteTitled(ctx, chatID, "", doc)
+	a.sendNoteTitled(ctx, chatID, "", doc, nil)
 }
 
 // sendNoteTitled is sendNote with a large heading built from the note title
 // (the file name), used by /teacher and /subject.
-func (a *App) sendNoteTitled(ctx context.Context, chatID int64, title string, doc search.DocMatch) {
+func (a *App) sendNoteTitled(ctx context.Context, chatID int64, title string, doc search.DocMatch, markup models.ReplyMarkup) {
 	body := doc.Body
 	if title != "" {
 		body = "# " + mdTitle(title) + "\n\n" + body
@@ -62,7 +62,7 @@ func (a *App) sendNoteTitled(ctx context.Context, chatID int64, title string, do
 		return
 	}
 
-	if err := a.sendRich(ctx, chatID, models.InputRichMessage{Markdown: markdown, Media: media}); err != nil {
+	if err := a.sendRich(ctx, chatID, models.InputRichMessage{Markdown: markdown, Media: media}, markup); err != nil {
 		a.log.Warn("send rich note", "chat_id", chatID, "err", err)
 		a.reply(ctx, chatID, renderMarkdown(markdown))
 	}

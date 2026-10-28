@@ -20,14 +20,21 @@ import (
 )
 
 // fakeTelegram implements just enough of the Bot API for an end-to-end test.
+type fakeButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data"`
+}
+
 type fakeTelegram struct {
-	mu       sync.Mutex
-	sent     []string
-	rich     []string
-	media    []string
-	files    []string
-	updateID int64
-	incoming string
+	mu           sync.Mutex
+	sent         []string
+	rich         []string
+	media        []string
+	files        []string
+	buttons      []fakeButton
+	updateID     int64
+	incoming     string
+	callbackData string
 }
 
 func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +64,23 @@ func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
 		// offset=1 gets exactly one new message.
 		if offset == 1 && f.updateID == 0 {
 			f.updateID = 1
+			if f.callbackData != "" {
+				writeJSON(w, map[string]any{"ok": true, "result": []any{map[string]any{
+					"update_id": 1,
+					"callback_query": map[string]any{
+						"id":   "cb1",
+						"from": map[string]any{"id": 7, "is_bot": false, "first_name": "Test"},
+						"message": map[string]any{
+							"message_id": 10,
+							"date":       time.Now().Unix(),
+							"chat":       map[string]any{"id": 42, "type": "group"},
+						},
+						"chat_instance": "test",
+						"data":          f.callbackData,
+					},
+				}}})
+				return
+			}
 			text := f.incoming
 			if text == "" {
 				text = "/teacher Медведев"
@@ -73,6 +97,9 @@ func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true, "result": []any{}})
+
+	case strings.HasSuffix(path, "/answerCallbackQuery"):
+		writeJSON(w, map[string]any{"ok": true, "result": true})
 
 	case strings.HasSuffix(path, "/sendMessage"):
 		_ = r.ParseMultipartForm(1 << 20)
@@ -99,6 +126,11 @@ func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.Unmarshal([]byte(r.FormValue("rich_message")), &payload)
 
+		var markup struct {
+			InlineKeyboard [][]fakeButton `json:"inline_keyboard"`
+		}
+		_ = json.Unmarshal([]byte(r.FormValue("reply_markup")), &markup)
+
 		ids := make([]string, 0, len(payload.Media))
 		for _, item := range payload.Media {
 			ids = append(ids, item.ID)
@@ -107,6 +139,9 @@ func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.rich = append(f.rich, payload.Markdown)
 		f.media = append(f.media, ids...)
+		for _, row := range markup.InlineKeyboard {
+			f.buttons = append(f.buttons, row...)
+		}
 		if r.MultipartForm != nil {
 			for name := range r.MultipartForm.File {
 				f.files = append(f.files, name)
@@ -232,6 +267,12 @@ func richFiles(api *fakeTelegram) []string {
 	return append([]string(nil), api.files...)
 }
 
+func richButtons(api *fakeTelegram) []fakeButton {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	return append([]fakeButton(nil), api.buttons...)
+}
+
 func TestEndToEndTeacherLookup(t *testing.T) {
 	api := &fakeTelegram{incoming: "/teacher Медведев"}
 	startTestBot(t, api)
@@ -259,6 +300,14 @@ func TestEndToEndTeacherLookup(t *testing.T) {
 	files := richFiles(api)
 	if len(files) != 1 || files[0] != "img1.png" {
 		t.Errorf("uploaded files = %v, want [img1.png]", files)
+	}
+
+	buttons := richButtons(api)
+	if len(buttons) != 1 || buttons[0].Text != "Карточка МДК.11.01 Базы данных" {
+		t.Fatalf("buttons = %v, want one subject button", buttons)
+	}
+	if !strings.HasPrefix(buttons[0].CallbackData, "s:") {
+		t.Errorf("callback data = %q, want s: prefix", buttons[0].CallbackData)
 	}
 }
 
@@ -332,5 +381,39 @@ func TestEndToEndSubjectUsesRichMessage(t *testing.T) {
 		if !strings.Contains(markdown, want) {
 			t.Errorf("rich markdown does not contain %q:\n%s", want, markdown)
 		}
+	}
+
+	buttons := richButtons(api)
+	if len(buttons) != 1 || buttons[0].Text != "Карточка преподавателя" {
+		t.Fatalf("buttons = %v, want teacher card button", buttons)
+	}
+	if !strings.HasPrefix(buttons[0].CallbackData, "t:") {
+		t.Errorf("callback data = %q, want t: prefix", buttons[0].CallbackData)
+	}
+}
+
+func TestEndToEndCallbackOpensTeacher(t *testing.T) {
+	api := &fakeTelegram{
+		callbackData: "t:" + noteID("Преподаватели/Медведев Владислав Сергеевич.md"),
+	}
+	startTestBot(t, api)
+
+	markdown := waitForRich(t, api)
+	for _, want := range []string{"# Медведев Владислав Сергеевич", "### Почта: vmedvedev@kait20.ru"} {
+		if !strings.Contains(markdown, want) {
+			t.Errorf("rich markdown does not contain %q:\n%s", want, markdown)
+		}
+	}
+}
+
+func TestEndToEndCallbackOpensSubject(t *testing.T) {
+	api := &fakeTelegram{
+		callbackData: "s:" + noteID("Предметы/МДК.11.01 Базы данных.md"),
+	}
+	startTestBot(t, api)
+
+	markdown := waitForRich(t, api)
+	if !strings.Contains(markdown, "# МДК.11.01 Базы данных") {
+		t.Errorf("rich markdown does not open the subject:\n%s", markdown)
 	}
 }

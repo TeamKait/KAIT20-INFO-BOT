@@ -63,6 +63,8 @@ func New(ctx context.Context, cfg *config.Config, svc *vault.Service, log *slog.
 	app.tg = tg
 
 	tg.RegisterHandler(tgbot.HandlerTypeMessageText, "/", tgbot.MatchTypePrefix, app.guard(app.dispatch))
+	tg.RegisterHandler(tgbot.HandlerTypeCallbackQueryData, "t:", tgbot.MatchTypePrefix, app.guardCallback(app.handleCallback))
+	tg.RegisterHandler(tgbot.HandlerTypeCallbackQueryData, "s:", tgbot.MatchTypePrefix, app.guardCallback(app.handleCallback))
 
 	if _, err := tg.SetMyCommands(ctx, &tgbot.SetMyCommandsParams{
 		Commands: []models.BotCommand{
