@@ -102,32 +102,6 @@ func (a *App) teacherSubjectsText(t *vault.Teacher) string {
 	return strings.TrimSpace(b.String())
 }
 
-func (a *App) subjectCard(s *vault.Subject) string {
-	var b strings.Builder
-	b.WriteString("📘 <b>" + esc(s.Name) + "</b>\n")
-
-	if s.Teacher != "" {
-		b.WriteString("👩‍🏫 <b>Кто ведёт:</b> " + esc(s.Teacher) + "\n")
-	}
-
-	if len(s.Sections) == 0 {
-		b.WriteString("\n<i>Информация не заполнена.</i>")
-	}
-	for _, section := range s.Sections {
-		text := renderMarkdown(section.Text)
-		if text == "" {
-			text = "—"
-		}
-		b.WriteString("\n▫️ <b>" + esc(section.Title) + "</b>\n")
-		b.WriteString(text + "\n")
-	}
-
-	if link := a.repo.fileURL(s.Path); link != "" {
-		b.WriteString("\n🔗 <a href=\"" + link + "\">заметка на GitHub</a>")
-	}
-	return strings.TrimSpace(b.String())
-}
-
 func (a *App) noteHeader(title, kind, path string) string {
 	var b strings.Builder
 	b.WriteString("📄 <b>" + esc(title) + "</b>")

@@ -21,6 +21,7 @@ type Config struct {
 	VaultURL     string
 	VaultBranch  string
 	VaultDir     string
+	ImagesDir    string
 	GitToken     string
 	SyncInterval time.Duration
 	AllowedChats map[int64]struct{}
@@ -39,6 +40,7 @@ func Load() (*Config, error) {
 		VaultURL:    envOr("VAULT_REPO_URL", "https://github.com/TeamKait/KAIT20-INFO.git"),
 		VaultBranch: envOr("VAULT_BRANCH", "master"),
 		VaultDir:    envOr("VAULT_DIR", "/data/vault"),
+		ImagesDir:   envOr("IMAGES_DIR", "Прочее/Картинки"),
 		GitToken:    strings.TrimSpace(os.Getenv("GIT_TOKEN")),
 		StartTime:   time.Now(),
 	}

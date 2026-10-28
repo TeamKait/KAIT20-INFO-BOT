@@ -54,24 +54,6 @@ func TestTeacherEmailText(t *testing.T) {
 	}
 }
 
-func TestSubjectCard(t *testing.T) {
-	card := testApp().subjectCard(&vault.Subject{
-		Name:    "УП.14 Учебная практика",
-		Teacher: "Волкова Юлия Александровна",
-		Sections: []vault.Section{
-			{Title: "Аттестация", Text: "Зачёт"},
-			{Title: "Посещаемость", Text: ""},
-		},
-		Path: "Предметы/УП.14 Учебная практика.md",
-	})
-
-	for _, want := range []string{"УП.14 Учебная практика", "Волкова", "Аттестация", "Зачёт", "—"} {
-		if !strings.Contains(card, want) {
-			t.Errorf("card does not contain %q:\n%s", want, card)
-		}
-	}
-}
-
 func TestTeachersList(t *testing.T) {
 	text := teachersList([]*vault.Teacher{
 		{Name: "Волкова Юлия Александровна"},

@@ -36,7 +36,7 @@ func splitTeacherField(args string) (name, field string) {
 func (a *App) handleStart(ctx context.Context, chatID int64) {
 	text := "<b>Справочник по хранилищу Sharaga</b>\n\n" +
 		"/teacher — список преподавателей\n" +
-		"/teacher Иванов — карточка преподавателя\n" +
+		"/teacher Иванов — заметка преподавателя: фото, почта, предметы\n" +
 		"/teacher Иванов email — только почта\n" +
 		"/teacher Иванов предметы — что ведёт\n" +
 		"/subject — список предметов\n" +
@@ -99,7 +99,7 @@ func (a *App) handleTeacher(ctx context.Context, chatID int64, args string) {
 	case "subjects":
 		a.reply(ctx, chatID, a.teacherSubjectsText(best.Teacher))
 	default:
-		a.reply(ctx, chatID, a.teacherCard(best.Teacher))
+		a.sendTeacherNote(ctx, chatID, best.Teacher)
 	}
 }
 
@@ -170,10 +170,12 @@ func (a *App) handleSubject(ctx context.Context, chatID int64, args string) {
 		return
 	}
 
-	if err := a.sendRichMarkdown(ctx, chatID, a.subjectMarkdown(best.Subject)); err != nil {
-		a.log.Warn("send rich subject", "chat_id", chatID, "err", err)
-		a.reply(ctx, chatID, a.subjectCard(best.Subject))
-	}
+	a.sendNoteTitled(ctx, chatID, best.Subject.Name, search.DocMatch{
+		Title: best.Subject.Name,
+		Kind:  "Предмет",
+		Path:  best.Subject.Path,
+		Body:  best.Subject.Body,
+	})
 }
 
 func (a *App) handleFind(ctx context.Context, chatID int64, args string) {

@@ -8,7 +8,6 @@ import (
 	"github.com/go-telegram/bot/models"
 
 	"infobot/internal/search"
-	"infobot/internal/vault"
 )
 
 const (
@@ -33,26 +32,39 @@ func (a *App) reply(ctx context.Context, chatID int64, text string) {
 	}
 }
 
-// sendNote sends the whole note: as a Rich Message when it fits, as a .md file
-// when it is too long for Telegram. If the Rich Messages API rejects the
-// message, the HTML renderer is used as a fallback.
+// sendNote sends the note in its original Markdown form as a Rich Message.
+// Only Obsidian-specific syntax is adapted; the author's headings, tables,
+// lists, quotes and links are kept as written. Long notes are sent as a .md
+// file, and the HTML renderer is used only as a fallback.
+// sendNote sends the note in its original Markdown form as a Rich Message.
+// Only Obsidian-specific syntax is adapted; the author's headings, tables,
+// lists, quotes and links are kept as written.
 func (a *App) sendNote(ctx context.Context, chatID int64, doc search.DocMatch) {
-	plain := vault.PlainText(doc.Body)
+	a.sendNoteTitled(ctx, chatID, "", doc)
+}
 
-	if len([]rune(plain)) > maxNoteRunes {
+// sendNoteTitled is sendNote with a large heading built from the note title
+// (the file name), used by /teacher and /subject.
+func (a *App) sendNoteTitled(ctx context.Context, chatID int64, title string, doc search.DocMatch) {
+	body := doc.Body
+	if title != "" {
+		body = "# " + mdTitle(title) + "\n\n" + body
+	}
+
+	markdown, media := a.richNoteMarkdown(body)
+	if markdown == "" {
+		markdown = "(пустая заметка)"
+	}
+
+	if len([]rune(markdown)) > maxNoteRunes {
 		header := a.noteHeader(doc.Title, doc.Kind, doc.Path)
 		a.sendNoteFile(ctx, chatID, doc.Title, header, doc.Body)
 		return
 	}
 
-	if err := a.sendRichMarkdown(ctx, chatID, a.noteMarkdown(doc.Title, doc.Kind, doc.Path, doc.Body)); err != nil {
+	if err := a.sendRich(ctx, chatID, models.InputRichMessage{Markdown: markdown, Media: media}); err != nil {
 		a.log.Warn("send rich note", "chat_id", chatID, "err", err)
-		header := a.noteHeader(doc.Title, doc.Kind, doc.Path)
-		body := renderMarkdown(doc.Body)
-		if body == "" {
-			body = "(пустая заметка)"
-		}
-		a.reply(ctx, chatID, header+"\n\n"+body)
+		a.reply(ctx, chatID, renderMarkdown(markdown))
 	}
 }
 

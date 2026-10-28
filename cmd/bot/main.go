@@ -27,7 +27,7 @@ func main() {
 	defer stop()
 
 	syncer := vault.NewSyncer(cfg.VaultURL, cfg.VaultBranch, cfg.VaultDir, cfg.GitToken)
-	svc := vault.NewService(syncer, vault.Dirs{})
+	svc := vault.NewService(syncer, vault.Dirs{Images: cfg.ImagesDir})
 
 	syncCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	_, syncErr := svc.Refresh(syncCtx)

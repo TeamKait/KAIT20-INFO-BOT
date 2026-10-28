@@ -24,6 +24,8 @@ type fakeTelegram struct {
 	mu       sync.Mutex
 	sent     []string
 	rich     []string
+	media    []string
+	files    []string
 	updateID int64
 	incoming string
 }
@@ -91,11 +93,25 @@ func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseMultipartForm(1 << 20)
 		var payload struct {
 			Markdown string `json:"markdown"`
+			Media    []struct {
+				ID string `json:"id"`
+			} `json:"media"`
 		}
 		_ = json.Unmarshal([]byte(r.FormValue("rich_message")), &payload)
 
+		ids := make([]string, 0, len(payload.Media))
+		for _, item := range payload.Media {
+			ids = append(ids, item.ID)
+		}
+
 		f.mu.Lock()
 		f.rich = append(f.rich, payload.Markdown)
+		f.media = append(f.media, ids...)
+		if r.MultipartForm != nil {
+			for name := range r.MultipartForm.File {
+				f.files = append(f.files, name)
+			}
+		}
 		f.mu.Unlock()
 
 		writeJSON(w, map[string]any{"ok": true, "result": map[string]any{
@@ -124,7 +140,8 @@ func startTestBot(t *testing.T, api *fakeTelegram) {
 
 	dir := t.TempDir()
 	writeVaultFile(t, dir, "Преподаватели/Медведев Владислав Сергеевич.md",
-		"![[photo.png]]\n### Почта: vmedvedev@kait20.ru\n>[!WARNING] Не подтверждено\n### Что ведет:\n- [[МДК.11.01 Базы данных]]\n")
+		"![[Медведев Владислав Сергеевич.png]]\n### Почта: vmedvedev@kait20.ru\n>[!WARNING] Не подтверждено\n>Почта не подтверждена преподавателем\n### Что ведет:\n- [[МДК.11.01 Базы данных]]\n")
+	writeVaultFile(t, dir, "Прочее/Картинки/Медведев Владислав Сергеевич.png", "fake-image-bytes")
 	writeVaultFile(t, dir, "Предметы/МДК.11.01 Базы данных.md",
 		"### Кто ведет: [[Медведев Владислав Сергеевич]]\n### Аттестация\nЗачёт\n")
 	writeVaultFile(t, dir, "Аттестация.md",
@@ -203,15 +220,45 @@ func waitForRich(t *testing.T, api *fakeTelegram) string {
 	return ""
 }
 
+func richMediaIDs(api *fakeTelegram) []string {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	return append([]string(nil), api.media...)
+}
+
+func richFiles(api *fakeTelegram) []string {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	return append([]string(nil), api.files...)
+}
+
 func TestEndToEndTeacherLookup(t *testing.T) {
 	api := &fakeTelegram{incoming: "/teacher Медведев"}
 	startTestBot(t, api)
 
-	reply := waitForReply(t, api)
-	for _, want := range []string{"Медведев", "vmedvedev@kait20.ru", "не подтверждена"} {
-		if !strings.Contains(reply, want) {
-			t.Errorf("reply does not contain %q:\n%s", want, reply)
+	markdown := waitForRich(t, api)
+	for _, want := range []string{
+		"# Медведев Владислав Сергеевич",
+		"![](tg://photo?id=img1)",
+		"### Почта: vmedvedev@kait20.ru",
+		"### Что ведет",
+		"МДК.11.01",
+	} {
+		if !strings.Contains(markdown, want) {
+			t.Errorf("rich markdown does not contain %q:\n%s", want, markdown)
 		}
+	}
+	if strings.Contains(markdown, "![[") {
+		t.Errorf("image embed was not replaced:\n%s", markdown)
+	}
+
+	ids := richMediaIDs(api)
+	if len(ids) != 1 || ids[0] != "img1" {
+		t.Errorf("media ids = %v, want [img1]", ids)
+	}
+	files := richFiles(api)
+	if len(files) != 1 || files[0] != "img1.png" {
+		t.Errorf("uploaded files = %v, want [img1.png]", files)
 	}
 }
 
@@ -251,7 +298,6 @@ func TestEndToEndFindUsesRichMessage(t *testing.T) {
 
 	markdown := waitForRich(t, api)
 	for _, want := range []string{
-		"# Аттестация",
 		"| Зачёт | Работа |",
 		"| --- | --- |",
 		"ОП.05",
@@ -260,6 +306,12 @@ func TestEndToEndFindUsesRichMessage(t *testing.T) {
 		if !strings.Contains(markdown, want) {
 			t.Errorf("rich markdown does not contain %q:\n%s", want, markdown)
 		}
+	}
+	if !strings.HasPrefix(markdown, "| Зачёт | Работа |") {
+		t.Errorf("note must be sent without a synthetic header:\n%s", markdown)
+	}
+	if strings.Contains(markdown, "Открыть на GitHub") {
+		t.Errorf("note must keep its original form without the GitHub footer:\n%s", markdown)
 	}
 	if strings.Contains(markdown, "[[") {
 		t.Errorf("wikilinks were not preprocessed:\n%s", markdown)
@@ -271,7 +323,12 @@ func TestEndToEndSubjectUsesRichMessage(t *testing.T) {
 	startTestBot(t, api)
 
 	markdown := waitForRich(t, api)
-	for _, want := range []string{"# МДК.11.01 Базы данных", "## Аттестация", "Зачёт"} {
+	for _, want := range []string{
+		"# МДК.11.01 Базы данных",
+		"### Кто ведет: Медведев Владислав Сергеевич",
+		"### Аттестация",
+		"Зачёт",
+	} {
 		if !strings.Contains(markdown, want) {
 			t.Errorf("rich markdown does not contain %q:\n%s", want, markdown)
 		}

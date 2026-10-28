@@ -13,6 +13,7 @@ import (
 type Dirs struct {
 	Teachers string
 	Subjects string
+	Images   string
 }
 
 func (d Dirs) teachers() string {
@@ -27,6 +28,13 @@ func (d Dirs) subjects() string {
 		return "Предметы"
 	}
 	return d.Subjects
+}
+
+func (d Dirs) images() string {
+	if d.Images == "" {
+		return "Прочее/Картинки"
+	}
+	return d.Images
 }
 
 // BuildIndex walks the vault and parses every markdown file.
