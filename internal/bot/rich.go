@@ -84,9 +84,15 @@ func (a *App) richNoteMarkdown(src string) (string, []models.InputRichMessageMed
 	return preprocessObsidian(src), media
 }
 
-// sendTeacherNote sends the teacher note in its original form. The photo is
-// embedded into the message when the referenced file exists in the vault.
-func (a *App) sendTeacherNote(ctx context.Context, chatID int64, teacher *vault.Teacher) {
+func (a *App) richMessage(body string) models.InputRichMessage {
+	markdown, media := a.richNoteMarkdown(body)
+	if markdown == "" {
+		markdown = "(пустая заметка)"
+	}
+	return models.InputRichMessage{Markdown: markdown, Media: media}
+}
+
+func (a *App) teacherMessage(teacher *vault.Teacher) models.InputRichMessage {
 	body := teacher.Body
 	// Some notes may miss the ![[...]] embed even though the photo exists.
 	if a.vault != nil && teacher.Photo == "" {
@@ -95,17 +101,40 @@ func (a *App) sendTeacherNote(ctx context.Context, chatID int64, teacher *vault.
 			body = "![[" + implicit + "]]\n\n" + body
 		}
 	}
-	body = "# " + mdTitle(teacher.Name) + "\n\n" + body
+	return a.richMessage("# " + mdTitle(teacher.Name) + "\n\n" + body)
+}
 
-	markdown, media := a.richNoteMarkdown(body)
-	if markdown == "" {
-		markdown = "(пустая заметка)"
-	}
+func (a *App) subjectMessage(subject *vault.Subject) models.InputRichMessage {
+	return a.richMessage("# " + mdTitle(subject.Name) + "\n\n" + subject.Body)
+}
 
-	if err := a.sendRich(ctx, chatID, models.InputRichMessage{Markdown: markdown, Media: media}, a.teacherButtons(teacher)); err != nil {
+// sendTeacherNote sends the teacher note in its original form. The photo is
+// embedded into the message when the referenced file exists in the vault.
+func (a *App) sendTeacherNote(ctx context.Context, chatID int64, teacher *vault.Teacher) {
+	if err := a.sendRich(ctx, chatID, a.teacherMessage(teacher), a.teacherButtons(teacher)); err != nil {
 		a.log.Warn("send rich teacher", "chat_id", chatID, "err", err)
 		a.reply(ctx, chatID, a.teacherCard(teacher))
 	}
+}
+
+// editRich replaces an existing message in place, including its inline
+// keyboard, so callback navigation does not create new messages in the chat.
+func (a *App) editRich(ctx context.Context, chatID int64, messageID int, message models.InputRichMessage, markup models.ReplyMarkup) error {
+	_, err := a.tg.EditMessageText(ctx, &tgbot.EditMessageTextParams{
+		ChatID:      chatID,
+		MessageID:   messageID,
+		RichMessage: &message,
+		ReplyMarkup: markup,
+	})
+	return err
+}
+
+func (a *App) editTeacherNote(ctx context.Context, chatID int64, messageID int, teacher *vault.Teacher) error {
+	return a.editRich(ctx, chatID, messageID, a.teacherMessage(teacher), a.teacherButtons(teacher))
+}
+
+func (a *App) editSubjectNote(ctx context.Context, chatID int64, messageID int, subject *vault.Subject) error {
+	return a.editRich(ctx, chatID, messageID, a.subjectMessage(subject), a.subjectButtons(subject))
 }
 
 // preprocessObsidian adapts vault-specific syntax to standard Markdown. The

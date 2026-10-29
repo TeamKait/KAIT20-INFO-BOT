@@ -143,32 +143,32 @@ func (a *App) handleCallback(ctx context.Context, _ *tgbot.Bot, update *models.U
 		return
 	}
 
-	if _, err := a.tg.AnswerCallbackQuery(ctx, &tgbot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}); err != nil {
+	var editErr error
+	if a.vault != nil {
+		if idx := a.vault.Index(); idx != nil {
+			if chatID, messageID, ok := callbackTarget(query); ok {
+				switch {
+				case strings.HasPrefix(query.Data, "t:"):
+					if teacher := findTeacherByID(idx, query.Data[2:]); teacher != nil {
+						editErr = a.editTeacherNote(ctx, chatID, messageID, teacher)
+					}
+				case strings.HasPrefix(query.Data, "s:"):
+					if subject := findSubjectByID(idx, query.Data[2:]); subject != nil {
+						editErr = a.editSubjectNote(ctx, chatID, messageID, subject)
+					}
+				}
+			}
+		}
+	}
+
+	params := &tgbot.AnswerCallbackQueryParams{CallbackQueryID: query.ID}
+	if editErr != nil {
+		a.log.Warn("edit callback message", "err", editErr)
+		params.Text = "Не удалось обновить сообщение"
+		params.ShowAlert = true
+	}
+	if _, err := a.tg.AnswerCallbackQuery(ctx, params); err != nil {
 		a.log.Warn("answer callback", "err", err)
-	}
-
-	if a.vault == nil {
-		return
-	}
-	idx := a.vault.Index()
-	if idx == nil {
-		return
-	}
-
-	chatID, ok := callbackChatID(query)
-	if !ok {
-		return
-	}
-
-	switch {
-	case strings.HasPrefix(query.Data, "t:"):
-		if teacher := findTeacherByID(idx, query.Data[2:]); teacher != nil {
-			a.sendTeacherNote(ctx, chatID, teacher)
-		}
-	case strings.HasPrefix(query.Data, "s:"):
-		if subject := findSubjectByID(idx, query.Data[2:]); subject != nil {
-			a.sendSubjectNote(ctx, chatID, subject)
-		}
 	}
 }
 
@@ -179,7 +179,7 @@ func (a *App) guardCallback(next tgbot.HandlerFunc) tgbot.HandlerFunc {
 			return
 		}
 		if len(a.cfg.AllowedChats) > 0 {
-			chatID, ok := callbackChatID(query)
+			chatID, _, ok := callbackTarget(query)
 			if !ok {
 				return
 			}
@@ -191,12 +191,12 @@ func (a *App) guardCallback(next tgbot.HandlerFunc) tgbot.HandlerFunc {
 	}
 }
 
-func callbackChatID(query *models.CallbackQuery) (int64, bool) {
-	if query.Message.Message != nil {
-		return query.Message.Message.Chat.ID, true
+func callbackTarget(query *models.CallbackQuery) (int64, int, bool) {
+	if message := query.Message.Message; message != nil {
+		return message.Chat.ID, message.ID, true
 	}
-	if query.Message.InaccessibleMessage != nil {
-		return query.Message.InaccessibleMessage.Chat.ID, true
+	if message := query.Message.InaccessibleMessage; message != nil {
+		return message.Chat.ID, message.MessageID, true
 	}
-	return 0, false
+	return 0, 0, false
 }

@@ -36,9 +36,6 @@ func (a *App) reply(ctx context.Context, chatID int64, text string) {
 // Only Obsidian-specific syntax is adapted; the author's headings, tables,
 // lists, quotes and links are kept as written. Long notes are sent as a .md
 // file, and the HTML renderer is used only as a fallback.
-// sendNote sends the note in its original Markdown form as a Rich Message.
-// Only Obsidian-specific syntax is adapted; the author's headings, tables,
-// lists, quotes and links are kept as written.
 func (a *App) sendNote(ctx context.Context, chatID int64, doc search.DocMatch) {
 	a.sendNoteTitled(ctx, chatID, "", doc, nil)
 }
@@ -51,20 +48,16 @@ func (a *App) sendNoteTitled(ctx context.Context, chatID int64, title string, do
 		body = "# " + mdTitle(title) + "\n\n" + body
 	}
 
-	markdown, media := a.richNoteMarkdown(body)
-	if markdown == "" {
-		markdown = "(пустая заметка)"
-	}
-
-	if len([]rune(markdown)) > maxNoteRunes {
+	message := a.richMessage(body)
+	if len([]rune(message.Markdown)) > maxNoteRunes {
 		header := a.noteHeader(doc.Title, doc.Kind, doc.Path)
 		a.sendNoteFile(ctx, chatID, doc.Title, header, doc.Body)
 		return
 	}
 
-	if err := a.sendRich(ctx, chatID, models.InputRichMessage{Markdown: markdown, Media: media}, markup); err != nil {
+	if err := a.sendRich(ctx, chatID, message, markup); err != nil {
 		a.log.Warn("send rich note", "chat_id", chatID, "err", err)
-		a.reply(ctx, chatID, renderMarkdown(markdown))
+		a.reply(ctx, chatID, renderMarkdown(message.Markdown))
 	}
 }
 

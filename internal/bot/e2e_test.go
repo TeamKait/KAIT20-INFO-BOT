@@ -25,6 +25,15 @@ type fakeButton struct {
 	CallbackData string `json:"callback_data"`
 }
 
+type fakeEdit struct {
+	ChatID    int64
+	MessageID int
+	Markdown  string
+	MediaIDs  []string
+	Buttons   []fakeButton
+	Files     []string
+}
+
 type fakeTelegram struct {
 	mu           sync.Mutex
 	sent         []string
@@ -32,6 +41,7 @@ type fakeTelegram struct {
 	media        []string
 	files        []string
 	buttons      []fakeButton
+	edits        []fakeEdit
 	updateID     int64
 	incoming     string
 	callbackData string
@@ -155,6 +165,48 @@ func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
 			"chat":       map[string]any{"id": 42, "type": "group"},
 		}})
 
+	case strings.HasSuffix(path, "/editMessageText"):
+		_ = r.ParseMultipartForm(1 << 20)
+
+		var payload struct {
+			Markdown string `json:"markdown"`
+			Media    []struct {
+				ID string `json:"id"`
+			} `json:"media"`
+		}
+		_ = json.Unmarshal([]byte(r.FormValue("rich_message")), &payload)
+
+		var markup struct {
+			InlineKeyboard [][]fakeButton `json:"inline_keyboard"`
+		}
+		_ = json.Unmarshal([]byte(r.FormValue("reply_markup")), &markup)
+
+		chatID, _ := strconv.ParseInt(r.FormValue("chat_id"), 10, 64)
+		messageID, _ := strconv.Atoi(r.FormValue("message_id"))
+
+		edit := fakeEdit{ChatID: chatID, MessageID: messageID, Markdown: payload.Markdown}
+		for _, item := range payload.Media {
+			edit.MediaIDs = append(edit.MediaIDs, item.ID)
+		}
+		for _, row := range markup.InlineKeyboard {
+			edit.Buttons = append(edit.Buttons, row...)
+		}
+		if r.MultipartForm != nil {
+			for name := range r.MultipartForm.File {
+				edit.Files = append(edit.Files, name)
+			}
+		}
+
+		f.mu.Lock()
+		f.edits = append(f.edits, edit)
+		f.mu.Unlock()
+
+		writeJSON(w, map[string]any{"ok": true, "result": map[string]any{
+			"message_id": messageID,
+			"date":       time.Now().Unix(),
+			"chat":       map[string]any{"id": chatID, "type": "group"},
+		}})
+
 	default:
 		http.NotFound(w, r)
 	}
@@ -273,6 +325,31 @@ func richButtons(api *fakeTelegram) []fakeButton {
 	api.mu.Lock()
 	defer api.mu.Unlock()
 	return append([]fakeButton(nil), api.buttons...)
+}
+
+func richCount(api *fakeTelegram) int {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	return len(api.rich)
+}
+
+func waitForEdit(t *testing.T, api *fakeTelegram) fakeEdit {
+	t.Helper()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		api.mu.Lock()
+		if len(api.edits) > 0 {
+			edit := api.edits[0]
+			api.mu.Unlock()
+			return edit
+		}
+		api.mu.Unlock()
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatal("bot did not edit the message")
+	return fakeEdit{}
 }
 
 func TestEndToEndTeacherLookup(t *testing.T) {
@@ -442,11 +519,26 @@ func TestEndToEndCallbackOpensTeacher(t *testing.T) {
 	}
 	startTestBot(t, api)
 
-	markdown := waitForRich(t, api)
+	edit := waitForEdit(t, api)
 	for _, want := range []string{"# Медведев Владислав Сергеевич", "### Почта: vmedvedev@kait20.ru"} {
-		if !strings.Contains(markdown, want) {
-			t.Errorf("rich markdown does not contain %q:\n%s", want, markdown)
+		if !strings.Contains(edit.Markdown, want) {
+			t.Errorf("edited markdown does not contain %q:\n%s", want, edit.Markdown)
 		}
+	}
+	if edit.MessageID != 10 || edit.ChatID != 42 {
+		t.Errorf("edited message = chat %d, id %d; want 42/10", edit.ChatID, edit.MessageID)
+	}
+	if len(edit.MediaIDs) != 1 || edit.MediaIDs[0] != "img1" {
+		t.Errorf("edited media = %v, want [img1]", edit.MediaIDs)
+	}
+	if len(edit.Files) != 1 || edit.Files[0] != "img1.png" {
+		t.Errorf("edited files = %v, want [img1.png]", edit.Files)
+	}
+	if got := richCount(api); got != 0 {
+		t.Errorf("callback sent %d new rich messages, want 0", got)
+	}
+	if len(edit.Buttons) != 1 || !strings.HasPrefix(edit.Buttons[0].CallbackData, "s:") {
+		t.Errorf("edited buttons = %v, want one subject button", edit.Buttons)
 	}
 }
 
@@ -456,8 +548,17 @@ func TestEndToEndCallbackOpensSubject(t *testing.T) {
 	}
 	startTestBot(t, api)
 
-	markdown := waitForRich(t, api)
-	if !strings.Contains(markdown, "# МДК.11.01 Базы данных") {
-		t.Errorf("rich markdown does not open the subject:\n%s", markdown)
+	edit := waitForEdit(t, api)
+	if !strings.Contains(edit.Markdown, "# МДК.11.01 Базы данных") {
+		t.Errorf("edited markdown does not open the subject:\n%s", edit.Markdown)
+	}
+	if edit.MessageID != 10 {
+		t.Errorf("edited message id = %d, want 10", edit.MessageID)
+	}
+	if got := richCount(api); got != 0 {
+		t.Errorf("callback sent %d new rich messages, want 0", got)
+	}
+	if len(edit.Buttons) != 1 || edit.Buttons[0].Text != "Карточка преподавателя" {
+		t.Errorf("edited buttons = %v, want teacher card button", edit.Buttons)
 	}
 }
