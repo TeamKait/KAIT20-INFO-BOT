@@ -5,6 +5,8 @@ services:
     container_name: sharaga-infobot
     restart: unless-stopped
     env_file: .env
+    ports:
+      - "8080:8080"
     volumes:
       - vault-data:/data
     logging:

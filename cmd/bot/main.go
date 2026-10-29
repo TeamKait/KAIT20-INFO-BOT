@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,6 +27,12 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go func(c context.Context, l *slog.Logger) {
+		if sErr := startServer(c, l); sErr != nil {
+			log.Error("server", "err", sErr)
+		}
+	}(ctx, log)
 
 	syncer := vault.NewSyncer(cfg.VaultURL, cfg.VaultBranch, cfg.VaultDir, cfg.GitToken)
 	svc := vault.NewService(syncer, vault.Dirs{Images: cfg.ImagesDir})
@@ -64,6 +72,35 @@ func main() {
 	log.Info("bot started")
 	app.Run(ctx)
 	log.Info("shutdown complete")
+}
+
+// startServer starts a minimal HTTP server for health check.
+func startServer(ctx context.Context, logger *slog.Logger) error {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	server := &http.Server{
+		Addr: ":" + port,
+	}
+	h := http.NewServeMux()
+	logger.Info("starting server", "port", port)
+	h.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	server.Handler = h
+
+	if sErr := server.ListenAndServe(); sErr != nil && !errors.Is(sErr, http.ErrServerClosed) {
+		return sErr
+	}
+
+	<-ctx.Done()
+
+	logger.Info("stopping server...")
+	serverCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	return server.Shutdown(serverCtx)
 }
 
 func syncLoop(ctx context.Context, log *slog.Logger, svc *vault.Service, every time.Duration) {
